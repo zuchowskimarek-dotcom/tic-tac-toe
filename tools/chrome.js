@@ -7,7 +7,25 @@ const os = require('node:os')
 const path = require('node:path')
 
 const REPLY_MS = 10000
-const START_MS = 15000
+const START_MS = 60000
+const REMOVE_TRIES = 20
+const REMOVE_WAIT_MS = 100
+const RETRY_CODES = ['ENOTEMPTY', 'EBUSY', 'EPERM']
+
+// Removes a folder and everything in it. Where a process still writes into it, the removal fails
+// with ENOTEMPTY, EBUSY or EPERM, and it tries again 100 ms later, 20 tries in all; any other error,
+// and the last of those, is thrown. Reads fs.rmSync at each try, so a test may stand in for it.
+async function removeFolder (dir) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+      return
+    } catch (err) {
+      if (!RETRY_CODES.includes(err.code) || attempt >= REMOVE_TRIES) throw err
+      await new Promise((resolve) => setTimeout(resolve, REMOVE_WAIT_MS))
+    }
+  }
+}
 
 // Returns the path of a Chrome binary: CHROME_PATH, then google-chrome, chromium and
 // chromium-browser on the PATH, then the macOS application; throws where none is found.
@@ -78,7 +96,7 @@ async function launch () {
       }
     }
     chrome.stderr.destroy()
-    fs.rmSync(dir, { recursive: true, force: true })
+    await removeFolder(dir)
   }
 
   const requests = []
@@ -197,4 +215,4 @@ async function launch () {
   return { evaluate, open, reload, requests, errors, close }
 }
 
-module.exports = { launch, findChrome }
+module.exports = { launch, findChrome, removeFolder }
