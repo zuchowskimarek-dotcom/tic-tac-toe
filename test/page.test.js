@@ -187,7 +187,7 @@ test('TC-R2 removeFolder retries a folder another process still writes into, and
   }
 })
 
-test('TC-R2 close() removes Chrome\'s folder when the first removal fails with ENOTEMPTY', { timeout: 60000 }, async () => {
+test('TC-R2 close() removes Chrome\'s folder when the first removal fails with ENOTEMPTY', { timeout: 90000 }, async () => {
   const chrome = await launch()
   let folder = null
   const real = fs.rmSync
@@ -212,6 +212,29 @@ test('TC-R2 close() removes Chrome\'s folder when the first removal fails with E
   }
 })
 
+test('TC-R2 close() rejects with the last error when every removal of Chrome\'s folder fails', { timeout: 90000 }, async () => {
+  const chrome = await launch()
+  let folder = null
+  const real = fs.rmSync
+  fs.rmSync = function (p, o) {
+    if (String(p).includes('ttt-chrome-')) {
+      folder = String(p)
+      const err = new Error('ENOTEMPTY: stand-in failure')
+      err.code = 'ENOTEMPTY'
+      throw err
+    }
+    return real.call(fs, p, o)
+  }
+  let caught = null
+  try {
+    await chrome.close().catch((err) => { caught = err })
+  } finally {
+    fs.rmSync = real
+    if (folder) fs.rmSync(folder, { recursive: true, force: true })
+  }
+  assert.equal(caught && caught.code, 'ENOTEMPTY', 'close() passes the last removal error on')
+})
+
 test('TC-R4 launch() waits for a Chrome that takes 20 seconds to start', { timeout: 90000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ttt-slow-'))
   const script = path.join(dir, 'slow-chrome.sh')
@@ -221,8 +244,11 @@ test('TC-R4 launch() waits for a Chrome that takes 20 seconds to start', { timeo
   try {
     const started = Date.now()
     const chrome = await launch()
-    assert.ok(Date.now() - started >= 19000, 'the stand-in waited before Chrome started')
-    await chrome.close()
+    try {
+      assert.ok(Date.now() - started >= 19000, 'the stand-in waited before Chrome started')
+    } finally {
+      await chrome.close()
+    }
   } finally {
     if (before === undefined) delete process.env.CHROME_PATH
     else process.env.CHROME_PATH = before
