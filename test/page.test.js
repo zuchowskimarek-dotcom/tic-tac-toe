@@ -4,7 +4,32 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
-const { launch } = require('../tools/chrome.js')
+const fs = require('node:fs')
+const os = require('node:os')
+const { launch, removeFolder } = require('../tools/chrome.js')
+
+// Runs fn with fs.rmSync replaced by a stand-in that throws the next code of `codes` on each call
+// (null calls the real one); returns the number of calls the stand-in took.
+async function withRmSync (codes, fn) {
+  const real = fs.rmSync
+  let calls = 0
+  fs.rmSync = function (p, o) {
+    const code = calls < codes.length ? codes[calls] : codes[codes.length - 1]
+    calls += 1
+    if (code) {
+      const err = new Error(code + ': stand-in failure')
+      err.code = code
+      throw err
+    }
+    return real.call(fs, p, o)
+  }
+  try {
+    await fn()
+  } finally {
+    fs.rmSync = real
+  }
+  return calls
+}
 
 const root = path.join(__dirname, '..')
 const fileUrl = (name) => pathToFileURL(path.join(root, name)).href
@@ -130,4 +155,50 @@ test('T-9 the real page plays both modes, keeps the session score and fetches no
   } finally {
     await chrome.close()
   }
+})
+
+test('TC-R2 removeFolder retries a folder another process still writes into, and only then', async () => {
+  for (const codes of [['ENOTEMPTY', 'ENOTEMPTY', null], ['EBUSY', null], ['EPERM', null]]) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ttt-remove-'))
+    const calls = await withRmSync(codes, () => removeFolder(dir))
+    assert.equal(calls, codes.length, 'tries for ' + codes.join(','))
+    assert.equal(fs.existsSync(dir), false)
+  }
+  const kept = fs.mkdtempSync(path.join(os.tmpdir(), 'ttt-remove-'))
+  try {
+    let caught = null
+    const calls = await withRmSync(['ENOTEMPTY'], () => removeFolder(kept).catch((err) => { caught = err }))
+    assert.equal(caught && caught.code, 'ENOTEMPTY')
+    assert.equal(calls, 20)
+    caught = null
+    const once = await withRmSync(['EACCES'], () => removeFolder(kept).catch((err) => { caught = err }))
+    assert.equal(caught && caught.code, 'EACCES')
+    assert.equal(once, 1)
+  } finally {
+    fs.rmSync(kept, { recursive: true, force: true })
+  }
+})
+
+test('TC-R2 close() removes Chrome\'s folder when the first removal fails with ENOTEMPTY', { timeout: 60000 }, async () => {
+  const chrome = await launch()
+  let folder = null
+  const real = fs.rmSync
+  let failed = false
+  fs.rmSync = function (p, o) {
+    if (!failed && String(p).includes('ttt-chrome-')) {
+      failed = true
+      folder = String(p)
+      const err = new Error('ENOTEMPTY: stand-in failure')
+      err.code = 'ENOTEMPTY'
+      throw err
+    }
+    return real.call(fs, p, o)
+  }
+  try {
+    await chrome.close()
+  } finally {
+    fs.rmSync = real
+  }
+  assert.equal(failed, true, 'the stand-in failed once')
+  assert.equal(fs.existsSync(folder), false, 'the folder is gone')
 })
