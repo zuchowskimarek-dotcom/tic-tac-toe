@@ -30,6 +30,7 @@
     cells.forEach(function (cell, i) {
       var mark = state.board[i]
       cell.textContent = mark || ''
+      cell.setAttribute('aria-label', 'Row ' + (Math.floor(i / 3) + 1) + ', column ' + (i % 3 + 1) + (mark ? ', ' + mark : ''))
       cell.className = 'cell' + (mark ? ' ' + mark.toLowerCase() : '') + (line.indexOf(i) >= 0 ? ' win' : '')
     })
     statusLine.textContent = statusText()

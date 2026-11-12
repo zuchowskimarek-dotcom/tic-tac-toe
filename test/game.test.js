@@ -1,4 +1,4 @@
-// T-1 to T-7 of TP-TIC-TAC-TOE-001: the rules, the computer player and the counting rule.
+// Checks the rules, the computer player and the counting rule of game.js as plain functions.
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -90,6 +90,8 @@ test('T-6 the computer takes a win, blocks a loss, and wins where both sides thr
   assert.equal(T.bestMove(at('O.XXO..X.', 'O')), 8)
   assert.equal(T.bestMove(at('XX..O....', 'O')), 2)
   assert.equal(T.bestMove(at('XX.OO.X..', 'O')), 5)
+  assert.equal(T.bestMove(at('XXO.O..X.', 'O')), 6, 'the immediate win, which the depth in the score prefers')
+  assert.equal(T.bestMove(T.newGame()), 0, 'the lowest cell among equal scores')
 })
 
 test('T-7 the counting rule adds 1 to the count each finished game earned', () => {

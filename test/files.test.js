@@ -1,4 +1,4 @@
-// T-8 and T-11 of TP-TIC-TAC-TOE-001: nothing to install or fetch, Node 24, the full surface.
+// Checks that the game loads only its own files, names no address, needs no package, and runs on Node 24.
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -18,7 +18,7 @@ test('T-8 the page loads only local files and the repository declares no depende
   assert.deepStrictEqual(refs.sort(), ['game.js', 'style.css', 'ui.js'])
   for (const name of GAME_FILES) {
     const text = read(name)
-    assert.doesNotMatch(text, /https?:/i, name + ' names an address')
+    assert.doesNotMatch(text, /\b(?:https?|wss?):/i, name + ' names an address')
     assert.doesNotMatch(text, /\b(?:src|href)\s*=\s*["']\/\//i, name + ' names a //-address')
     assert.doesNotMatch(text, /url\(\s*["']?\/\//i, name + ' names a //-address')
   }
