@@ -6,10 +6,11 @@ const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const fs = require('node:fs')
 const os = require('node:os')
-const { launch, removeFolder } = require('../tools/chrome.js')
+const { launch, removeFolder, findChrome } = require('../tools/chrome.js')
 
-// Runs fn with fs.rmSync replaced by a stand-in that throws the next code of `codes` on each call
-// (null calls the real one); returns the number of calls the stand-in took.
+// Runs fn with fs.rmSync replaced by a stand-in that throws the next code of `codes` on each call,
+// repeating the last code once the list runs out (null calls the real one), and always restores the
+// real fs.rmSync; returns the number of calls the stand-in took.
 async function withRmSync (codes, fn) {
   const real = fs.rmSync
   let calls = 0
@@ -160,16 +161,23 @@ test('T-9 the real page plays both modes, keeps the session score and fetches no
 test('TC-R2 removeFolder retries a folder another process still writes into, and only then', async () => {
   for (const codes of [['ENOTEMPTY', 'ENOTEMPTY', null], ['EBUSY', null], ['EPERM', null]]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ttt-remove-'))
-    const calls = await withRmSync(codes, () => removeFolder(dir))
-    assert.equal(calls, codes.length, 'tries for ' + codes.join(','))
-    assert.equal(fs.existsSync(dir), false)
+    try {
+      const calls = await withRmSync(codes, () => removeFolder(dir))
+      assert.equal(calls, codes.length, 'tries for ' + codes.join(','))
+      assert.equal(fs.existsSync(dir), false)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   }
   const kept = fs.mkdtempSync(path.join(os.tmpdir(), 'ttt-remove-'))
   try {
     let caught = null
+    const started = Date.now()
     const calls = await withRmSync(['ENOTEMPTY'], () => removeFolder(kept).catch((err) => { caught = err }))
+    const waited = Date.now() - started
     assert.equal(caught && caught.code, 'ENOTEMPTY')
     assert.equal(calls, 20)
+    assert.ok(waited >= 1800, 'the 19 waits of 100 ms took ' + waited + ' ms')
     caught = null
     const once = await withRmSync(['EACCES'], () => removeFolder(kept).catch((err) => { caught = err }))
     assert.equal(caught && caught.code, 'EACCES')
@@ -196,9 +204,28 @@ test('TC-R2 close() removes Chrome\'s folder when the first removal fails with E
   }
   try {
     await chrome.close()
+    assert.equal(failed, true, 'the stand-in failed once')
+    assert.equal(fs.existsSync(folder), false, 'the folder is gone')
   } finally {
     fs.rmSync = real
+    if (folder) fs.rmSync(folder, { recursive: true, force: true })
   }
-  assert.equal(failed, true, 'the stand-in failed once')
-  assert.equal(fs.existsSync(folder), false, 'the folder is gone')
+})
+
+test('TC-R4 launch() waits for a Chrome that takes 20 seconds to start', { timeout: 90000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ttt-slow-'))
+  const script = path.join(dir, 'slow-chrome.sh')
+  fs.writeFileSync(script, '#!/bin/sh\nsleep 20\nexec ' + JSON.stringify(findChrome()) + ' "$@"\n', { mode: 0o755 })
+  const before = process.env.CHROME_PATH
+  process.env.CHROME_PATH = script
+  try {
+    const started = Date.now()
+    const chrome = await launch()
+    assert.ok(Date.now() - started >= 19000, 'the stand-in waited before Chrome started')
+    await chrome.close()
+  } finally {
+    if (before === undefined) delete process.env.CHROME_PATH
+    else process.env.CHROME_PATH = before
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
 })

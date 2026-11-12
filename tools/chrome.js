@@ -7,7 +7,7 @@ const os = require('node:os')
 const path = require('node:path')
 
 const REPLY_MS = 10000
-const START_MS = 15000
+const START_MS = 60000
 const REMOVE_TRIES = 20
 const REMOVE_WAIT_MS = 100
 const RETRY_CODES = ['ENOTEMPTY', 'EBUSY', 'EPERM']
