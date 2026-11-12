@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tic-Tac-Toe</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Tic-Tac-Toe</h1>
+  <div class="modes" role="group" aria-label="Game mode">
+    <button type="button" id="mode-two" aria-pressed="true">Two players</button>
+    <button type="button" id="mode-computer" aria-pressed="false">Versus computer</button>
+  </div>
+  <div class="status" id="status" aria-live="polite">X's turn</div>
+  <div class="board" id="board">
+    <button type="button" class="cell" data-cell="0" aria-label="Row 1, column 1"></button>
+    <button type="button" class="cell" data-cell="1" aria-label="Row 1, column 2"></button>
+    <button type="button" class="cell" data-cell="2" aria-label="Row 1, column 3"></button>
+    <button type="button" class="cell" data-cell="3" aria-label="Row 2, column 1"></button>
+    <button type="button" class="cell" data-cell="4" aria-label="Row 2, column 2"></button>
+    <button type="button" class="cell" data-cell="5" aria-label="Row 2, column 3"></button>
+    <button type="button" class="cell" data-cell="6" aria-label="Row 3, column 1"></button>
+    <button type="button" class="cell" data-cell="7" aria-label="Row 3, column 2"></button>
+    <button type="button" class="cell" data-cell="8" aria-label="Row 3, column 3"></button>
+  </div>
+  <div class="score">
+    <div><b id="score-x">0</b><span id="label-x">X wins</span></div>
+    <div><b id="score-draws">0</b><span id="label-draws">Draws</span></div>
+    <div><b id="score-o">0</b><span id="label-o">O wins</span></div>
+  </div>
+  <button type="button" class="new" id="new-game">New game</button>
+</main>
+<script src="game.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

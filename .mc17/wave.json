@@ -1,0 +1,82 @@
+{
+  "ip": "IP-MC17-003",
+  "wavePlan": "30018b31-31ea-4f39-9d48-f3025d40c64e",
+  "wavePlanName": "WAVE-PLAN-TIC-TAC-TOE-001",
+  "rulingRecord": 45,
+  "branch": "ip-001-game",
+  "tokenHash": "sha256:30a7616c97217268b691e7b6de4eb11a123ee2e2469ffbd28d601fdb9008369f",
+  "lockedAt": "2026-11-12T14:33:31.276Z",
+  "lockedBy": "mc17 0.1.100",
+  "mode": "hand",
+  "planBinding": "sha256:16ad55bab340cb1d95e902c3af34b3929fedcd95dceda5a505917758bdb3600c",
+  "supersedes": null,
+  "rulingRecordKind": "ruling",
+  "rulingRecordAt": "2026-11-12T14:27:36Z",
+  "members": [
+    "IP-TIC-TAC-TOE-001"
+  ],
+  "settings": {
+    "wave.mode": {
+      "value": "hand",
+      "source": "override"
+    },
+    "wave.model.build": {
+      "value": "opus",
+      "source": "default"
+    },
+    "wave.model.review": {
+      "value": "opus",
+      "source": "default"
+    },
+    "wave.model.fix": {
+      "value": "opus",
+      "source": "default"
+    },
+    "wave.model.rereview": {
+      "value": "opus",
+      "source": "default"
+    },
+    "wave.model.land": {
+      "value": "opus",
+      "source": "default"
+    },
+    "wave.model.converge": {
+      "value": "none",
+      "source": "default"
+    },
+    "wave.review.lenses": {
+      "value": "2",
+      "source": "default"
+    },
+    "wave.review.required": {
+      "value": "on",
+      "source": "default"
+    },
+    "wave.fix.rounds": {
+      "value": "3",
+      "source": "default"
+    },
+    "documents.plain-passes": {
+      "value": "1",
+      "source": "default"
+    },
+    "wave.test.red-run": {
+      "value": "off",
+      "source": "default"
+    },
+    "wave.test.drill": {
+      "value": "stored",
+      "source": "default"
+    },
+    "wave.test.hosts": {
+      "value": "1",
+      "source": "default"
+    },
+    "wave.branch": {
+      "value": "ip-001-game",
+      "source": "override"
+    }
+  },
+  "promptsDigest": "none",
+  "promptShas": "none"
+}

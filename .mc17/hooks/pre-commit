@@ -1,0 +1,161 @@
+#!/bin/sh
+# mc17 wave lock - the pre-commit backstop of IP-MC17-003 Part 1 (Mission Control v1.7, Profile 8.1:
+# wave work reaches the branch only through the sanctioned runner's stage call).
+#
+# Installed repo-side by `mc17 wave hooks --repo <path>`, which copies this file and pre-merge-commit beside it to
+# .mc17/hooks/ and sets core.hooksPath there, so both exist wherever the repo is checked out. The lock in force is the
+# copy of .mc17/wave.json committed at HEAD; where HEAD holds none, the copy staged for this commit, which is the
+# commit `mc17 wave lock` makes; and where neither holds one, the copy that stands in the working tree alone, which
+# `mc17 wave lock --no-commit` leaves. Where a lock is in force and the checked-out branch is the branch the lock
+# names, or opens mission/, the hook refuses:
+#   - a commit whose staged or working-tree copy of the lock differs from the committed copy, read as parsed JSON, so
+#     line endings and spacing make no difference, whatever token or override the commit carries, with one exception:
+#     a copy that differs in its `resume` field alone is the commit `mc17 wave lock --resume` makes, and goes on to the
+#     token check below, where the override passes it never; a copy that is absent is the lock's removal, which
+#     `mc17 wave unlock` makes, and goes on to the checks below. Where node does not run, the copies are compared by
+#     their git blob ids, so a copy that differs by any byte is refused, a resume edit among them;
+#   - any other commit unless the committing process carries the wave token in MC17_WAVE_TOKEN, which only a
+#     sanctioned runStage hands to the build and fix agents it spawns.
+# The override is spelled out in the refusal and journaled, so going around the lock is a deliberate recorded act
+# and never an accident. pre-merge-commit runs this file with MC17_HOOK_ACT=merge, so a merge commit meets the same
+# rule. A branch with no lock in force behaves exactly as before.
+
+act=${MC17_HOOK_ACT:-commit}
+hook=${MC17_HOOK_NAME:-pre-commit}
+self=${MC17_HOOK_SELF:-$0}
+
+chain_default() {
+  # core.hooksPath replaces .git/hooks, so a hook of this name that stood there before is run here, after this one. A
+  # hook there that is this file, or the hook that ran this file, is no prior hook, so a hooks path that is .git/hooks
+  # itself runs each hook once.
+  gitdir=$(git rev-parse --git-dir 2>/dev/null) || return 0
+  prior="$gitdir/hooks/$hook"
+  [ -x "$prior" ] || return 0
+  if [ "$prior" = "$0" ] || [ "$prior" -ef "$0" ] || [ "$prior" = "$self" ] || [ "$prior" -ef "$self" ]; then return 0; fi
+  "$prior" "$@"
+}
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+# The lock in force: the copy committed at HEAD, else the copy staged for this commit, else the working tree's copy.
+has_head=0
+loose=0
+if lock=$(git show HEAD:.mc17/wave.json 2>/dev/null); then has_head=1
+elif lock=$(git show :.mc17/wave.json 2>/dev/null); then :
+elif [ -f "$root/.mc17/wave.json" ] && lock=$(cat "$root/.mc17/wave.json" 2>/dev/null); then loose=1
+else chain_default "$@"; exit $?; fi
+
+want=$(printf '%s\n' "$lock" | sed -n 's/^[[:space:]]*"tokenHash":[[:space:]]*"sha256:\([0-9a-f]*\)".*/\1/p' | head -n 1)
+wave=$(printf '%s\n' "$lock" | sed -n 's/^[[:space:]]*"wavePlanName":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+locked=$(printf '%s\n' "$lock" | sed -n 's/^[[:space:]]*"branch":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+
+# The branch rule: the branch the lock names, or any branch whose name opens mission/.
+case "$branch" in
+  mission/*) ;;
+  *) [ -n "$branch" ] && [ "$branch" = "$locked" ] || { chain_default "$@"; exit $?; } ;;
+esac
+
+# The lines every refusal of a merge ends with: git leaves the merge open when this hook refuses it.
+merge_open() {
+  [ "$act" = merge ] || return 0
+  echo "  The merge is left open: MERGE_HEAD stands and the merged files are staged. git merge --abort ends it." >&2
+}
+
+refuse() {
+  echo "mc17 wave lock: REFUSED a $act on $branch." >&2
+  echo "  $1" >&2
+  echo "  The branch is locked to wave $wave (.mc17/wave.json). Wave work reaches this branch only through the" >&2
+  echo "  sanctioned runner's stage call, whose build and fix agents carry MC17_WAVE_TOKEN (Profile 8.1; IP-MC17-003 Part 1)." >&2
+  if [ "$loose" = 1 ]; then
+    echo "  The lock stands in the working tree, and no commit holds it. Commit it on its own first, with the token" >&2
+    echo "  mc17 wave lock printed: git add .mc17/wave.json && MC17_WAVE_TOKEN=<token> git commit -m \"mc17 wave lock\" -- .mc17/wave.json" >&2
+  fi
+  echo "  To $act outside the wave on purpose: MC17_WAVE_OVERRIDE=<your reason> git $act ... - the override is" >&2
+  echo "  journaled, and the closure history check names every sha no stage record accounts for." >&2
+  merge_open
+  exit 1
+}
+
+refuse_edit() {
+  echo "mc17 wave lock: REFUSED a $act on $branch." >&2
+  echo "  $1" >&2
+  echo "  The lock in force is the copy of .mc17/wave.json committed on this branch, locked to wave $wave. A lock" >&2
+  echo "  changes only through mc17 wave unlock and mc17 wave lock, each in a commit of its own, so no token and" >&2
+  echo "  no override passes an edit of the lock in place, except the resume entry that mc17 wave lock --resume" >&2
+  echo "  commits under the token. Restore it with: git checkout HEAD -- .mc17/wave.json" >&2
+  merge_open
+  exit 1
+}
+
+refuse_resume_override() {
+  echo "mc17 wave lock: REFUSED a $act on $branch." >&2
+  echo "  The copy of .mc17/wave.json differs from the committed copy in its resume field alone, and the commit carries" >&2
+  echo "  MC17_WAVE_OVERRIDE. A resume entry reaches the lock through mc17 wave lock --resume, which checks it against the" >&2
+  echo "  ledger, the runner's return and the branch and commits it under the wave token in MC17_WAVE_TOKEN; the override" >&2
+  echo "  passes no resume edit, because the launch reading admits the seed and the acceptance the entry names." >&2
+  merge_open
+  exit 1
+}
+
+# Prints nothing and exits 0 where the staged copy and the working tree's copy of the lock each read, as parsed JSON,
+# as the copy committed at HEAD, or stand absent; prints the field and exits 3 where every differing field of every copy
+# is `resume`, the edit mc17 wave lock --resume makes; otherwise prints which copy differs and in which field, and exits 1.
+LOCK_COMPARE='
+const cp = require("child_process"), fs = require("fs"), path = require("path")
+const show = (spec) => { try { return cp.execFileSync("git", ["show", spec], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }) } catch (e) { return null } }
+const fieldsOf = (a, b) => [...new Set(Object.keys(a).concat(Object.keys(b)))].sort().filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]))
+const differs = (a, b) => fieldsOf(JSON.parse(a), JSON.parse(b))
+const head = show("HEAD:.mc17/wave.json")
+const file = path.join(process.argv[1], ".mc17", "wave.json")
+const copies = [["the copy staged for this commit", show(":.mc17/wave.json")],
+  ["the working tree copy", fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null]]
+let resumeEdit = false
+for (const [label, text] of copies) {
+  if (text === null) continue
+  let fields = null
+  try { fields = differs(head, text) } catch (e) { console.log(label + " of .mc17/wave.json does not read as JSON"); process.exit(1) }
+  const other = fields.find((k) => k !== "resume")
+  if (other !== undefined) { console.log(label + " of .mc17/wave.json differs from the copy committed at HEAD in its field " + other); process.exit(1) }
+  if (fields.length > 0) resumeEdit = true
+}
+if (resumeEdit) { console.log("the copy of .mc17/wave.json differs from the copy committed at HEAD in its field resume alone"); process.exit(3) }
+'
+
+resume_edit=0
+if [ "$has_head" = 1 ]; then
+  if command -v node >/dev/null 2>&1; then
+    why=$(node -e "$LOCK_COMPARE" "$root" 2>&1); rc=$?
+    if [ "$rc" = 3 ]; then resume_edit=1
+    elif [ "$rc" != 0 ]; then refuse_edit "$why"; fi
+  else
+    # Without node the copies are compared by their blob ids: an absent copy passes, and any other that differs from
+    # the copy committed at HEAD is refused. git hash-object reads the working tree's copy as git would stage it.
+    head_id=$(git rev-parse -q --verify "HEAD:.mc17/wave.json" 2>/dev/null)
+    staged_id=$(git rev-parse -q --verify ":.mc17/wave.json" 2>/dev/null)
+    [ -z "$staged_id" ] || [ "$staged_id" = "$head_id" ] || refuse_edit "the copy staged for this commit of .mc17/wave.json differs from the copy committed at HEAD, and node does not run on this host to read the two as JSON"
+    if [ -f "$root/.mc17/wave.json" ]; then
+      tree_id=$(git hash-object "$root/.mc17/wave.json" 2>/dev/null)
+      [ "$tree_id" = "$head_id" ] || refuse_edit "the working tree copy of .mc17/wave.json differs from the copy committed at HEAD, and node does not run on this host to read the two as JSON"
+    fi
+  fi
+fi
+
+if [ -n "$MC17_WAVE_OVERRIDE" ]; then
+  [ "$resume_edit" = 1 ] && refuse_resume_override
+  gitdir=$(git rev-parse --git-dir 2>/dev/null)
+  printf '%s\tbranch=%s\twave=%s\tuser=%s\tMC17_WAVE_OVERRIDE=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$wave" "$(git config user.email 2>/dev/null)" "$MC17_WAVE_OVERRIDE" >> "$gitdir/mc17-wave-overrides.log"
+  echo "mc17 wave lock: OVERRIDDEN on $branch (wave $wave); recorded in $gitdir/mc17-wave-overrides.log. This $act is outside the sanctioned wave and the closure history check will name it (IP-MC17-003 Part 3)." >&2
+  chain_default "$@"; exit $?
+fi
+
+[ -n "$want" ] || refuse "the lock file carries no tokenHash the hook can read; repair .mc17/wave.json with mc17 wave lock"
+[ -n "$MC17_WAVE_TOKEN" ] || refuse "MC17_WAVE_TOKEN is absent from this process's environment"
+
+if command -v sha256sum >/dev/null 2>&1; then got=$(printf '%s' "$MC17_WAVE_TOKEN" | sha256sum | cut -d' ' -f1)
+elif command -v shasum >/dev/null 2>&1; then got=$(printf '%s' "$MC17_WAVE_TOKEN" | shasum -a 256 | cut -d' ' -f1)
+elif command -v openssl >/dev/null 2>&1; then got=$(printf '%s' "$MC17_WAVE_TOKEN" | openssl dgst -sha256 | sed 's/^.*= *//')
+else refuse "no sha256 tool on PATH (sha256sum, shasum or openssl), so the token cannot be checked"; fi
+
+[ "$got" = "$want" ] || refuse "MC17_WAVE_TOKEN does not match the lock's tokenHash"
+chain_default "$@"
