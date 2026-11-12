@@ -1,0 +1,9 @@
+#!/bin/sh
+# mc17 wave lock - the pre-merge-commit backstop beside the pre-commit backstop (Mission Control v1.7, Profile 8.1).
+#
+# git runs this hook before it makes a merge commit, where it runs no pre-commit. It runs the pre-commit hook that
+# `mc17 wave hooks` installs beside it, under the name of a merge, so a merge commit on a locked branch meets the rule
+# a commit meets: the lock committed on the branch, read as parsed JSON, and the wave token or the journaled override.
+# The repository's own pre-merge-commit that stood under .git/hooks is chained after it; this file hands its own path
+# as MC17_HOOK_SELF, so where that hook is this file the chain runs it no second time.
+MC17_HOOK_ACT=merge MC17_HOOK_NAME=pre-merge-commit MC17_HOOK_SELF="$0" exec sh "$(dirname "$0")/pre-commit" "$@"
